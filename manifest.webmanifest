@@ -1,0 +1,13 @@
+{
+  "name": "The Spike — a spiking net that reads timing",
+  "short_name": "The Spike",
+  "description": "Leaky integrate-and-fire + STDP. Spikes that coincide fire a neuron; the same spikes spread out leak away — timing a rate model can't see. Train it to classify temporal patterns.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0b10",
+  "theme_color": "#0a0b10",
+  "icons": [
+    { "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230a0b10'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='%23e0b23a'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

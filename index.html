@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Spike · a spiking net that reads timing</title>
+<meta name="description" content="Leaky integrate-and-fire neurons + STDP. Spikes that arrive together fire a neuron; the same spikes spread out leak away — information in the timing a rate model can't see. Slide to spread the spikes; train it to classify temporal patterns.">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0a0b10">
+<style>
+  :root{
+    --bg:#0a0b10; --panel:#13161e; --panel2:#191d27; --border:#242a36; --ink:#e9ecf2; --dim:#858ea0;
+    --gold:#e0b23a; --green:#5fd08a; --red:#e77b6b; --blue:#6fb0ff; --violet:#b79bff;
+    --serif:Georgia,'Times New Roman',serif; --sans:system-ui,-apple-system,'Segoe UI',sans-serif; --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:light){ :root{ --bg:#f3f4f1; --panel:#fff; --panel2:#edefe9; --border:#e0e2da; --ink:#171920; --dim:#6b7180; } }
+  :root[data-theme=dark]{ --bg:#0a0b10; --panel:#13161e; --panel2:#191d27; --border:#242a36; --ink:#e9ecf2; --dim:#858ea0; }
+  :root[data-theme=light]{ --bg:#f3f4f1; --panel:#fff; --panel2:#edefe9; --border:#e0e2da; --ink:#171920; --dim:#6b7180; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;min-height:100dvh;padding:24px 16px 56px}
+  .wrap{max-width:820px;margin:0 auto}
+  header{text-align:center;margin:6px 0 14px}
+  .glyph{font-size:30px;line-height:1;color:var(--gold)}
+  h1{font-family:var(--serif);font-weight:700;font-size:clamp(27px,6vw,42px);letter-spacing:-.02em;margin:6px 0 4px}
+  h1 em{color:var(--gold);font-style:italic}
+  .sub{color:var(--dim);max-width:610px;margin:8px auto 0;font-size:14.5px}
+  .sub b{color:var(--ink)}
+  section{background:var(--panel);border:1px solid var(--border);border-radius:15px;padding:16px;margin-top:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;background:var(--panel2)}
+  .ctl{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+  input[type=range]{flex:1;min-width:160px;accent-color:var(--gold)}
+  .verdict{font-family:var(--mono);font-size:14px;font-weight:700}
+  .verdict.fire{color:var(--green)} .verdict.no{color:var(--red)}
+  .lab{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  button{font-family:var(--sans);font-weight:700;font-size:13px;padding:10px 15px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--ink);cursor:pointer;transition:.14s}
+  button:hover{border-color:var(--gold);color:var(--gold)}
+  button.gold{background:var(--gold);color:#0a0b10;border-color:var(--gold)}
+  .accbar{height:20px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);overflow:hidden;margin-top:12px;position:relative}
+  .accbar i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--gold),var(--green));transition:width .2s}
+  .accbar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;mix-blend-mode:difference;color:#fff}
+  .grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .cell{font-family:var(--mono);font-size:11px;padding:6px 9px;border-radius:7px;border:1px solid var(--border);color:var(--dim)}
+  .cell.hit{border-color:var(--green);color:var(--green)} .cell.miss{border-color:var(--red);color:var(--red)}
+  footer{text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px;margin-top:24px;line-height:1.8}
+  footer a{color:var(--gold);text-decoration:none} footer a:hover{text-decoration:underline}
+  .themebtn{position:fixed;top:14px;right:14px;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--ink);cursor:pointer;font-size:15px}
+</style>
+</head>
+<body>
+<button class="themebtn" id="theme" title="Toggle theme">◐</button>
+<div class="wrap">
+  <header>
+    <div class="glyph">⚡</div>
+    <h1>The <em>Spike</em></h1>
+    <p class="sub">Leaky integrate-and-fire neurons + STDP. A neuron sums incoming spikes but <b>leaks</b> between them — so spikes that arrive <b>together</b> push it over threshold and it <b>fires</b>, while the <b>same spikes spread out</b> leak away and it stays quiet. That's information in the <b>timing</b> — which a rate model throws away. Slide the spread; then train it to classify temporal patterns.</p>
+  </header>
+
+  <section>
+    <div class="eyebrow">§1 · coincidence detection — slide to spread the same 5 spikes</div>
+    <canvas id="trace" width="760" height="280"></canvas>
+    <div class="ctl">
+      <span class="lab">coincident</span>
+      <input type="range" id="spread" min="0" max="60" value="0">
+      <span class="lab">spread out</span>
+    </div>
+    <div class="ctl"><span class="verdict" id="verdict">—</span><span class="lab" id="peak"></span></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">§2 · learn — STDP trains a classifier of temporal patterns</div>
+    <p style="color:var(--dim);font-size:13.5px;margin-bottom:4px">Five distinct spatiotemporal spike patterns, one per class. Train, and STDP shapes the synapses until each pattern lights its own output neuron.</p>
+    <div class="ctl"><button class="gold" id="train">▶ train (STDP)</button><button id="newpat">new patterns</button><span class="lab" id="epoch"></span></div>
+    <div class="accbar"><i id="accfill" style="width:0%"></i><span id="acclabel">accuracy 0%</span></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <footer>
+    the EVENT-TIME organ · LIF + STDP · coincidence detection · <a href="https://github.com/sjgant80-hub/the-spike">gate 14/14</a> · honest: a simulator, one leaky layer<br>
+    organ #5 (last) of the anatomy cascade · retrofits attractor + reads niceassos envelope streams · <a href="https://sjgant80-hub.github.io/the-cam/">the-cam</a> · <a href="https://github.com/sjgant80-hub/the-spike">source</a>
+  </footer>
+</div>
+
+<script type="module">
+import { lif, makeNet, randomPattern, _rng } from './snn.mjs';
+const css = getComputedStyle(document.documentElement); const col = n => css.getPropertyValue(n).trim();
+
+// ── §1 coincidence trace ──
+const K = 5, T = 60, W = 0.34, P = { leak: 0.86, thresh: 1.0, reset: 0 };
+const tc = document.getElementById('trace'), tx = tc.getContext('2d');
+function drawTrace(spread) {
+  const center = T / 2;
+  const times = Array.from({ length: K }, (_, i) => Math.round(center + (i - (K - 1) / 2) * spread / 10));
+  // simulate
+  let v = 0; const vs = [], fires = [];
+  for (let t = 0; t < T; t++) { let I = 0; for (const st of times) if (st === t) I += W; const s = lif(v, I, P); v = s.v; vs.push(s.spike ? P.thresh * 1.15 : v); if (s.spike) fires.push(t); }
+  // draw
+  const w = tc.width, h = tc.height, pad = 26, gx = t => pad + t / (T - 1) * (w - 2 * pad), gy = val => h - pad - (val / 1.2) * (h - 2 * pad);
+  tx.clearRect(0, 0, w, h);
+  // threshold line
+  tx.strokeStyle = col('--dim'); tx.setLineDash([5, 5]); tx.globalAlpha = .6; tx.beginPath(); tx.moveTo(pad, gy(P.thresh)); tx.lineTo(w - pad, gy(P.thresh)); tx.stroke(); tx.setLineDash([]); tx.globalAlpha = 1;
+  tx.fillStyle = col('--dim'); tx.font = '11px ui-monospace,monospace'; tx.fillText('threshold', w - pad - 62, gy(P.thresh) - 5);
+  // input spike ticks
+  for (const st of times) { tx.strokeStyle = col('--blue'); tx.globalAlpha = .8; tx.lineWidth = 2; tx.beginPath(); tx.moveTo(gx(st), h - pad); tx.lineTo(gx(st), h - pad + 8); tx.stroke(); }
+  tx.globalAlpha = 1;
+  // membrane trace
+  tx.strokeStyle = col('--gold'); tx.lineWidth = 2.2; tx.beginPath();
+  vs.forEach((val, t) => { const x = gx(t), y = gy(Math.min(1.15, val)); t ? tx.lineTo(x, y) : tx.moveTo(x, y); }); tx.stroke();
+  // output spikes
+  for (const t of fires) { tx.fillStyle = col('--green'); tx.beginPath(); tx.arc(gx(t), gy(P.thresh), 4.5, 0, 7); tx.fill(); }
+  const peak = Math.max(...vs);
+  const vEl = document.getElementById('verdict'), pEl = document.getElementById('peak');
+  if (fires.length) { vEl.className = 'verdict fire'; vEl.textContent = '⚡ FIRES — the spikes coincided'; }
+  else { vEl.className = 'verdict no'; vEl.textContent = '· quiet — the spikes leaked away'; }
+  pEl.textContent = `peak membrane ${peak.toFixed(2)} / threshold ${P.thresh}`;
+}
+document.getElementById('spread').addEventListener('input', e => drawTrace(+e.target.value));
+
+// ── §2 learn ──
+let I = 16, C = 5, TT = 25, patterns = [], labels = [], net = null, seedN = 11;
+function freshPatterns() { const r = _rng((seedN += 7)); patterns = []; labels = []; for (let c = 0; c < C; c++) { patterns.push(randomPattern(I, 6, TT, r)); labels.push(c); } net = makeNet({ inputs: I, classes: C, seed: seedN + 1, thresh: 1.0, leak: 0.82 }); renderAcc(0); document.getElementById('grid').innerHTML = ''; document.getElementById('epoch').textContent = ''; }
+function renderAcc(a) { document.getElementById('accfill').style.width = (a * 100) + '%'; document.getElementById('acclabel').textContent = `accuracy ${(a * 100).toFixed(0)}%`; }
+function renderGrid() { document.getElementById('grid').innerHTML = patterns.map((p, k) => { const pred = net.classify(p, TT); const hit = pred === labels[k]; return `<span class="cell ${hit ? 'hit' : 'miss'}">pattern ${k} → class ${pred < 0 ? '—' : pred} ${hit ? '✓' : '✗'}</span>`; }).join(''); }
+document.getElementById('train').onclick = () => {
+  if (!net) return;
+  document.getElementById('epoch').textContent = 'training…';
+  setTimeout(() => {                                  // yield once so the label paints, then train synchronously (reliable, no rAF throttling)
+    let epoch = 0, acc = 0;
+    while (epoch < 160 && acc < 1) { net.train(patterns, labels, { T: TT, epochs: 10, lr: 0.02 }); epoch += 10; acc = net.accuracy(patterns, labels, TT); renderAcc(acc); renderGrid(); }
+    document.getElementById('epoch').textContent = `converged at epoch ${epoch} · accuracy ${(acc * 100).toFixed(0)}%`;
+  }, 30);
+};
+document.getElementById('newpat').onclick = freshPatterns;
+
+const root = document.documentElement;
+document.getElementById('theme').onclick = () => { const cur = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'); root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark'); drawTrace(+document.getElementById('spread').value); };
+
+drawTrace(0); freshPatterns();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>
