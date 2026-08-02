@@ -2,7 +2,7 @@
 // (integrate/fire/reset/leak), STDP sign (causal→potentiate, acausal→depress), the honest EVENT-TIME win
 // (COINCIDENCE DETECTION — spikes together fire, spread out they leak away), and that STDP training LEARNS
 // to classify distinct spatiotemporal patterns.
-import { lif, stdp, makeNet, randomPattern, _rng } from './snn.mjs';
+import { lif, stdp, makeNet, randomPattern, membraneTrace, liveness, _rng } from './snn.mjs';
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ FAIL ') + m); };
@@ -61,7 +61,16 @@ console.log('\n=== §5 · DETERMINISM + §6 · FUZZ ===');
   ok(!threw, '500 random patterns + empty + out-of-range spike: 0 throws, all finite');
 }
 
+console.log('\n=== §7 · THE ATTRACTOR WIRE — the-spike classifies its OWN liveness (spike → attractor) ===');
+{
+  const driven = liveness(new Array(40).fill(0.35));                     // steady drive → fires periodically
+  ok(driven.class === 'attractor' && driven.alive, `a steadily-driven neuron reads as a LIVE attractor (${driven.class})`);
+  const dead = liveness(new Array(40).fill(0));                          // no drive → membrane sits at 0
+  ok(dead.class === 'flatline', `a starved neuron FLATLINES — attractor calls it dead (${dead.class})`);
+  ok(Array.isArray(membraneTrace([0.5, 0.5, 0.5])) && membraneTrace([]).length === 0, 'membraneTrace returns the v(t) trajectory (empty on garbage, no throw)');
+}
+
 console.log('\n' + (fail === 0
-  ? `=== ✅ THE SPIKE HOLDS — LIF + STDP, coincidence detection, a learned temporal classifier · ${pass}/${pass} · zero tokens ===`
+  ? `=== ✅ THE SPIKE HOLDS — LIF + STDP, coincidence detection, a learned classifier, liveness via attractor · ${pass}/${pass} · zero tokens ===`
   : `=== ✗ ${fail} FAILED (${pass} passed) ===`));
 process.exit(fail === 0 ? 0 : 1);

@@ -7,6 +7,8 @@
 // HONEST SCOPE: this is a simulator, not neuromorphic hardware, and one leaky layer — it does event-time
 // things (coincidence, order) that deep nets do awkwardly; it does NOT do what deep nets do well.
 
+import classify from './attractor.mjs';   // the-spike → attractor: classify a neuron's own liveness regime
+
 // LIF step: v leaks, integrates input current I, fires + resets at threshold.
 export function lif(v, I, { leak = 0.82, thresh = 1.0, reset = 0 } = {}) {
   v = v * leak + I;
@@ -74,4 +76,15 @@ export function makeNet({ inputs, classes, seed = 1, thresh = 1.0, leak = 0.82, 
 export function randomPattern(inputs, k, T, rand) { const idx = [...Array(inputs).keys()]; for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1));[idx[i], idx[j]] = [idx[j], idx[i]]; } return idx.slice(0, k).map(i => [i, Math.floor(rand() * T)]); }
 export { rng as _rng };
 
-export default { lif, stdp, makeNet, randomPattern };
+// ── THE ATTRACTOR WIRE (the-spike → attractor) ── run a neuron over a per-step input-current series → its
+// membrane trajectory; attractor then says which dynamical regime it is in: a live ATTRACTOR (sustained
+// firing), FLATLINE (dead / no drive), or ESCAPED. The spike organ can now report its OWN liveness.
+export function membraneTrace(currents, params = {}) {
+  const P = { leak: 0.82, thresh: 1.0, reset: 0, ...params };
+  let v = 0; const trace = [];
+  for (const I of (Array.isArray(currents) ? currents : [])) { const s = lif(v, I, P); v = s.v; trace.push(s.spike ? P.thresh : v); }
+  return trace;
+}
+export function liveness(currents, params = {}) { return classify(membraneTrace(currents, params)); }
+
+export default { lif, stdp, makeNet, randomPattern, membraneTrace, liveness };
